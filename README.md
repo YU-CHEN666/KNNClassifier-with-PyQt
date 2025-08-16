@@ -15,7 +15,7 @@
 # 簡介
 不懂AI沒關係，我設計了一個圖形使用者介面，操作非常的簡單，沒有過多花俏的功能簡潔有力，讓任何人都可以輕鬆使用及體驗AI的強大。
 # 版本
-此版本不支援SQL，之後會續設計支援SQL版本。
+此版本不支援SQL，支援SQL版本[請點我](https://github.com/YU-CHEN666/KNNClassifier-with-GUI/tree/support-SQL-version)
 # 操作
 1. 先將訓練資料處理好儲存成Excel，需符合[格式](#資料格式)。
 3. 按下訓練新模型按鈕選擇檔案，等待訓練完成。
