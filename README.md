@@ -45,7 +45,7 @@
 我設計這個程式的初衷，是為了提供一個介面，讓普通使用者(不會寫程式，對AI一無所知又想使用AI)能直接使用，因此沒有提供參數調整(我已盡可能優化它)，並且假設訓練資料是優質的。
 當準確率偏低時，不訪朝訓練資料是有問題的(選擇的特徵不合適?類別分布不均勻?資料量太少?)去思考去優化，來提升模型準確率。
 # 馬上使用
-1. 請先下載:[點此下載](https://drive.google.com/file/d/1QTNfSrWJJ6Ot8fInHh8hgjTcZ75RQPW9/view?usp=sharing)
+1. 請先下載:[點此下載](https://drive.google.com/file/d/13bhqBWeCedur7yaCg5XsU4qcsHEBPbps/view?usp=sharing)
 2. 解壓縮。
 3. 打開資料夾，點擊執行程式，開始體驗AI的強大!
 
