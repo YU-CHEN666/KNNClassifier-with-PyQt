@@ -662,6 +662,8 @@ class Ui_delete_model(QtWidgets.QWidget):
 
 #主視窗
 class Ui_mainwindows(QtWidgets.QWidget):
+    #信號
+    setCurrentModelSignal = QtCore.pyqtSignal(str)
     def __init__(self):
         super().__init__()
         self.resize(811, 402)
@@ -749,6 +751,8 @@ class Ui_mainwindows(QtWidgets.QWidget):
         self.pred_show_content.setFont(font)
         self.pred_show_content.setStyleSheet("background:white")
         self.content_Layout.addWidget(self.pred_show_content)
+        #信號連接slot
+        self.setCurrentModelSignal.connect(lambda text:self.model_show_content.setText(text))
     
     
     def check_exist_model(self,who):
@@ -1201,10 +1205,9 @@ class DeleteAllModelProcessThread(QtCore.QThread):
         shutil.rmtree("Feature_number")
         os.mkdir("Feature_number")
         progressDialog.setProcessbarValueSignal.emit(80)
-        default_model = ""
-        mainwindows.model_show_content.setText("未訓練模型")
+        mainwindows.setCurrentModelSignal.emit("未訓練模型")
         with open("latest-date.pkl","wb") as f:
-            default_model = pickle.dump("",f)
+            pickle.dump("",f)
         progressDialog.successsfullyComoletedSignal.emit()
 
 
