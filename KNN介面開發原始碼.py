@@ -1,5 +1,5 @@
 from PyQt6 import QtCore,QtGui,QtWidgets
-import os,numpy,pandas,pickle,shutil
+import os,numpy,pandas,pickle,shutil,threading
 from datetime import datetime
 from sklearn.neighbors import KNeighborsClassifier as KNClassifier
 from sklearn.preprocessing import StandardScaler,LabelEncoder
@@ -9,6 +9,9 @@ from sklearn.model_selection import cross_val_score,StratifiedKFold
 
 #選擇檔案視窗
 class Ui_chose_file(QtWidgets.QWidget):
+    #信號
+    clearFilesSignal = QtCore.pyqtSignal()
+    showErrorDialogSignal = QtCore.pyqtSignal(str,str)
     def __init__(self,parent):
         super().__init__(parent)
         self.setWindowTitle("選取檔案")
@@ -42,6 +45,9 @@ class Ui_chose_file(QtWidgets.QWidget):
                                          """)
         self.button_cancel.clicked.connect(lambda:self.close())
         self.horizontalLayout.addWidget(self.button_cancel)
+        #信號連接slot
+        self.clearFilesSignal.connect(self.ClearFiles)
+        self.showErrorDialogSignal.connect(lambda arg1,arg2:self.format_error_dialog(arg1,arg2))
 
 
     def format_error_dialog(self,file_name,where):
@@ -79,60 +85,25 @@ class Ui_chose_file(QtWidgets.QWidget):
         return wrong.exec()
 
 
-    def format_check(self,file_name,file_path,csv):
-        #資料格式檢查
-        if self.process.wasCanceled():
-            return None,None
-        if self.model == "pred":
-            if len(csv.shape) == 1:
-                csv = csv[numpy.newaxis,:]            
-            if numpy.isnan(csv[0,0]):
-                #有欄位名稱
-                csv_data = csv[1:,:]
-            else:
-                csv_data = csv
-            with open("Feature_number/"+default_model+"-number.pkl","rb") as f:
-                pred_feature_number = pickle.load(f)
-            if csv_data.shape[1] != pred_feature_number:
-                self.process.cancel()
-                self.format_error_dialog("","預測特徵數量")
-                return None,None
-            if numpy.any(numpy.isnan(csv_data)):
-                self.process.cancel()
-                self.format_error_dialog(file_name,"特徵")
-                return None,None      
-            return csv_data,None
-        else:            
-            if numpy.isnan(csv[0,0]):            
-                #有欄位名稱            
-                csv_data = csv[1:,:-1]
-                csv_class = numpy.genfromtxt(file_path,dtype="str",delimiter=',',usecols=(-1),skip_header=1,encoding="utf-8")
-            else:
-                csv_data = csv[:,:-1]
-                csv_class = numpy.genfromtxt(file_path,dtype="str",delimiter=',',usecols=(-1),encoding="utf-8")               
-            if numpy.any(numpy.isnan(csv_data)):
-                self.process.cancel()
-                self.format_error_dialog(file_name,"特徵")
-                return None,None
-            elif  not numpy.all(numpy.isnan(csv[:,-1])):
-                self.process.cancel()
-                self.format_error_dialog(file_name,"類別")
-                return None,None
-            return csv_data,csv_class
-
-
-    def class_coding(self,csv_class):
+    def ClearFiles(self):
+        del self.files
+    
+    
+    @staticmethod
+    def class_coding(csv_class):
         #字串編碼成整數
         encoder = LabelEncoder()
         encoder.fit(csv_class)
         return encoder,encoder.transform(csv_class)
      
       
-    def train_model(self,feature,target):
+    @staticmethod
+    def train_model(feature,target):
         #訓練模型
         scaler = StandardScaler()
-        if self.process.wasCanceled():
-            return None,None
+        if progressDialog.WasCancel():
+            progressDialog.successsfullyStoppedSignal.emit()
+            return None,None,None
         scaler.fit(feature)
         train_feature = scaler.transform(feature)
         train_number = feature.shape[0]
@@ -155,8 +126,9 @@ class Ui_chose_file(QtWidgets.QWidget):
         kn.fit(train_feature,target)
         return kn,scaler,train_feature.shape[1]
 
- 
-    def model_scaler_encoder_number_save(self,model,scaler,encoder,feature_number):
+
+    @staticmethod
+    def model_scaler_encoder_number_save(model,scaler,encoder,feature_number):
         #儲存模型&標準化器
         global default_model
         time_now = str(datetime.today().strftime("%Y-%m-%d %H.%M.%S"))
@@ -202,179 +174,14 @@ class Ui_chose_file(QtWidgets.QWidget):
             files,_ = QtWidgets.QFileDialog.getOpenFileNames(self,"開啟檔案",filter="(*.csv *.xlsx *.xls)")
         if files:
             #有選擇檔案
-            self.process = QtWidgets.QProgressDialog(self)
-            self.process.setAutoClose(False)
-            self.process.setAutoReset(False)
-            self.process.setWindowModality(QtCore.Qt.WindowModality.ApplicationModal)
-            self.process.setWindowTitle("目前進度")
-            self.process.setStyleSheet(processstytle)
-            self.process.setMinimumSize(QtCore.QSize(300,110))
-            self.process_value = 0
-            self.process.setValue(self.process_value)            
-            self.process.canceled.connect(self.process_canel)
-            self.process.setLabelText("處理資料中......")
-            self.process.setMinimumDuration(1)
-            csv_data,csv_class = self.get_data_class_process(files)
-            if csv_data is None:
-                self.process.cancel()
-                return                                   
-            elif self.model == "train":
-                self.process.setLabelText("訓練模型中......")
-                self.process_value = 75
-                self.process.setValue(self.process_value)                
-                encoder,train_class = self.class_coding(csv_class)
-                model,scaler,feature_number = self.train_model(csv_data,train_class)
-                if model is None:
-                    self.process.cancel()
-                    return
-                self.model_scaler_encoder_number_save(model,scaler,encoder,feature_number)
-                self.process.setLabelText("訓練完成")
-                self.process_value = 100
-                self.process.setValue(self.process_value)               
-            else:
-                self.process.setLabelText("模型預測中......")
-                self.process_value = 75
-                self.process.setValue(self.process_value)
-                with open("./Model/"+default_model+"-model.pkl","rb") as f:
-                    pred_model = pickle.load(f)
-                with open("./Scaler/"+default_model+"-scaler.pkl","rb") as f:
-                    pred_model_scaler = pickle.load(f)
-                with open("./Encoder/"+default_model+"-encoder.pkl","rb") as f:
-                    pred_model_encoder = pickle.load(f)
-                pred_data = pred_model_scaler.transform(csv_data)
-                result = pred_model.predict(pred_data)
-                if len(result)==1:
-                    #只有一筆預測資料
-                    result = pred_model_encoder.inverse_transform(result)
-                    mainwindows.pred_show_content.setText(str(result[0]))
-                    self.process.setLabelText("預測完成")
-                    self.process_value = 100
-                    self.process.setValue(self.process_value)
-                else:
-                    result = pred_model_encoder.inverse_transform(result)
-                    result = result[:,numpy.newaxis]
-                    if "USERPROFILE" in os.environ:
-                        numpy.savetxt(os.environ["USERPROFILE"]+"\\Desktop\\result.txt",result,"%s")
-                        mainwindows.pred_show_content.setText("已將結果儲存在桌面的result.txt檔案")
-                    else:
-                        numpy.savetxt(os.environ["SYSTEMDRIVE"]+"\\result.txt",result,"%s")
-                        mainwindows.pred_show_content.setText(f"已將結果儲存在{os.environ['SYSTEMDRIVE']}中的result.txt檔案")
-                    self.process.setLabelText("預測完成")
-                    self.process_value = 100
-                    self.process.setValue(self.process_value)
+            self.files = files
+            progressDialog.Reset()
+            progressDialog.show()
+            localFilesProcessThread.start()
         else:
             return
   
-    
-    def excel_to_csv(self,path):
-        #將excel轉換成csv
-        excel =  pandas.read_excel(path)
-        excel.to_csv("temp.csv",encoding="utf-8",index=False)
-        csv = numpy.genfromtxt("temp.csv",dtype="float32",delimiter=',',encoding="utf-8")       
-        return csv
-
-    
-    def merge_data_target(self,data_temp,class_temp,data,target,feature_numer):
-        #合併特徵&類別資料
-        if data.shape[1] != feature_numer:      
-            return None,None
-        if self.model == "train":           
-            return numpy.vstack((data_temp,data)),numpy.hstack((class_temp,target))
-        else:
-            return numpy.vstack((data_temp,data)),None           
-
-        
-    def get_data_class_process(self,files):
-        if len(files)==1:           
-            #只選擇一個檔案
-            _ = files[0].split("/")[-1].split(".")
-            file_name = _[0]
-            file_type = _[1]
-            self.process_value = 10
-            self.process.setValue(self.process_value)
-            if "csv" in file_type:
-                csv = numpy.genfromtxt(files[0],dtype="float32",delimiter=',',encoding="utf-8")
-                csv_data,csv_class = self.format_check(file_name,files[0],csv)
-                if csv_data is None:
-                    return None,None
-                self.process_value = 50
-                self.process.setValue(self.process_value)
-                return csv_data,csv_class
-            else:
-                csv = self.excel_to_csv(files[0])
-                csv_data,csv_class = self.format_check(file_name,"temp.csv",csv)
-                if csv_data is None:
-                    os.remove("temp.csv")
-                    return None,None
-                os.remove("temp.csv")
-                self.process_value = 50
-                self.process.setValue(self.process_value)
-                return csv_data,csv_class
-        else:
-            #選擇多個檔案
-            _ = files[0].split("/")[-1].split(".")
-            file_name = _[0]
-            file_type = _[1]
-            if "csv" in file_type:
-                csv = numpy.genfromtxt(files[0],dtype="float32",delimiter=',',encoding="utf-8")
-                csv_data_temp,csv_class_temp = self.format_check(file_name,files[0],csv)
-                if csv_data_temp is None:
-                    return None,None
-                feature_numer = csv_data_temp.shape[1]
-            else:
-                csv = self.excel_to_csv(files[0])
-                csv_data_temp,csv_class_temp = self.format_check(file_name,"temp.csv",csv)
-                if csv_data_temp is None:
-                    os.remove("temp.csv")
-                    return None,None
-                feature_numer = csv_data_temp.shape[1]
-                os.remove("temp.csv")
-            self.process_value = 10
-            self.process.setValue(self.process_value)
-            for file_path in files[1:]:
-                if self.process.wasCanceled():
-                    return None,None
-                elif len(files[1:]) >1:
-                    if files[1:].index(file_path) == len(files[1:])//2:
-                        self.process_value = 30
-                        self.process.setValue(self.process_value)
-                _ = file_path.split("/")[-1].split(".")
-                file_name = _[0]
-                file_type = _[1]
-                if "csv" in file_type:
-                    csv = numpy.genfromtxt(file_path,dtype="float32",delimiter=',',encoding="utf-8")                    
-                    csv_data,csv_class = self.format_check(file_name,file_path,csv)
-                    if csv_data is None:
-                        return None,None
-                    csv_data_temp,csv_class_temp = self.merge_data_target(csv_data_temp,csv_class_temp,csv_data,csv_class,feature_numer)
-                    if csv_data_temp is None:
-                        self.process.cancel() 
-                        self.format_error_dialog("","合併")
-                        return None,None
-                elif "xlsx" in file_type or "xls" in file_type:
-                    csv = self.excel_to_csv(file_path)
-                    csv_data,csv_class = self.format_check(file_name,"temp.csv",csv)
-                    if csv_data is None:
-                        os.remove("temp.csv")
-                        return None,None
-                    os.remove("temp.csv")
-                    csv_data_temp,csv_class_temp = self.merge_data_target(csv_data_temp,csv_class_temp,csv_data,csv_class,feature_numer)
-                    if csv_data_temp is None:
-                        self.process.cancel()      
-                        self.format_error_dialog("","合併")
-                        return None,None
-            self.process_value = 50
-            self.process.setValue(self.process_value)
-            return csv_data_temp,csv_class_temp
- 
-    
-    def process_canel(self):
-        if self.process_value<100:
-            self.process.setValue(self.process_value)
-            self.process.setLabelText("正在終止程序......")
-            self.process.show()
-
-      
+  
     def ctrl_c_pass(self,event):
         combin = event.keyCombination()
         if combin.toCombined() == 67108931:
@@ -399,7 +206,7 @@ class Ui_chose_file(QtWidgets.QWidget):
             cursor = self.text_show.textCursor()
             cursor.insertText(train_str)
             cursor.insertBlock()
-            image = QtGui.QImage("C:\\Users\\ksd55\\Desktop\\範例圖片.jpg")
+            image = QtGui.QImage("範例圖片.jpg")
             cursor.insertImage(image.scaledToWidth(650,QtCore.Qt.TransformationMode.SmoothTransformation))            
             cursor.movePosition(cursor.MoveOperation.Start)
             self.text_show.setTextCursor(cursor)
@@ -424,9 +231,9 @@ class Ui_chose_file(QtWidgets.QWidget):
                 self.text_show.setTextCursor(cursor)
                 self.model = "pred"
         self.show()
-
-
-
+  
+        
+  
 #選擇模型視窗-年份
 class Ui_chose_model_year(QtWidgets.QWidget):
     def __init__(self,parent):
@@ -565,45 +372,21 @@ class Ui_delete_model(QtWidgets.QWidget):
         self.all_button.setGeometry(140,10,100,50)
         self.all_button.setFont(font)
         self.all_button.clicked.connect(self.delete_all)
-
+        #變數
+        self.isActivate = False
+    
     
     def delete_all(self):
         self.close()
         answer = Ui_chose_file.format_error_dialog(mainwindows,"","確認刪除全部模型")
         global default_model
         if answer == 16384:            
-            process = QtWidgets.QProgressDialog(mainwindows)
-            button = QtWidgets.QPushButton("ok",process)
-            process.setCancelButton(button)
-            button.hide()
-            process.setAutoClose(False)
-            process.setAutoReset(False)
-            process.setWindowModality(QtCore.Qt.WindowModality.ApplicationModal)
-            process.setWindowTitle("目前進度")
-            process.setStyleSheet(processstytle)
-            process.setMinimumSize(QtCore.QSize(300,110))
-            process.setValue(0)
-            process.setLabelText("刪除模型中......")
-            process.setMinimumDuration(1)
-            shutil.rmtree("Model")
-            os.mkdir("Model")
-            process.setValue(20)
-            shutil.rmtree("Scaler")
-            os.mkdir("Scaler")
-            process.setValue(40)
-            shutil.rmtree("Encoder")
-            os.mkdir("Encoder")
-            process.setValue(60)
-            shutil.rmtree("Feature_number")
-            os.mkdir("Feature_number")
-            process.setValue(80)
-            default_model = ""
-            mainwindows.model_show_content.setText("未訓練模型")
-            with open("latest-date.pkl","wb") as f:
-                default_model = pickle.dump("",f)
-            process.setValue(100)
-            process.setLabelText("刪除完成")
-            button.show()
+            progressDialog.Reset()
+            progressDialog.label.setText("刪除模型中......")
+            progressDialog.button.setDisabled(True)
+            progressDialog.show()
+            self.isActivate = True
+            deleteAllModelProcessThread.start()
         else:
             return
 
@@ -611,6 +394,8 @@ class Ui_delete_model(QtWidgets.QWidget):
 
 #主視窗
 class Ui_mainwindows(QtWidgets.QWidget):
+    #信號
+    setCurrentModelSignal = QtCore.pyqtSignal(str)
     def __init__(self):
         super().__init__()
         self.resize(811, 402)
@@ -698,6 +483,8 @@ class Ui_mainwindows(QtWidgets.QWidget):
         self.pred_show_content.setFont(font)
         self.pred_show_content.setStyleSheet("background:white")
         self.content_Layout.addWidget(self.pred_show_content)
+        #信號連接slot
+        self.setCurrentModelSignal.connect(lambda text:self.model_show_content.setText(text))
     
     
     def check_exist_model(self,who):
@@ -732,6 +519,329 @@ class Ui_mainwindows(QtWidgets.QWidget):
 
 
 
+class ProgressDialog(QtWidgets.QWidget):
+    #信號
+    setProcessbarValueSignal = QtCore.pyqtSignal(int)
+    setLabelTextSignal = QtCore.pyqtSignal(str)
+    successsfullyStoppedSignal = QtCore.pyqtSignal()
+    successsfullyComoletedSignal = QtCore.pyqtSignal()
+    setEnabledButtonSignal = QtCore.pyqtSignal()
+    hideSignal = QtCore.pyqtSignal()
+    def __init__(self,parent):
+        super().__init__(parent)
+        self.setFixedSize(420,180)
+        self.setWindowTitle("目前進度")
+        self.setWindowFlags(QtCore.Qt.WindowType.Dialog)
+        self.setWindowModality(QtCore.Qt.WindowModality.ApplicationModal)
+        font = QtGui.QFont()
+        #標題
+        self.label = QtWidgets.QLabel(self)
+        self.label.setGeometry(30, 20, 360, 30)
+        font.setPixelSize(26)
+        self.label.setFont(font)
+        self.label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        #進度條
+        self.processbar = QtWidgets.QProgressBar(self)
+        self.processbar.setGeometry(20, 65, 380, 40)
+        font.setPixelSize(20)
+        self.processbar.setFont(font)
+        self.processbar.setStyleSheet("""
+                                      QProgressBar{text-align:center; border:1px solid gray; border-radius:5px;}
+                                      QProgressBar::chunk{background:#66c2ff;}""")                                                
+        #按鈕                                         
+        self.button = QtWidgets.QPushButton("取消",self)
+        self.button.setGeometry(160, 120, 110, 50)
+        font.setPixelSize(23)
+        self.button.setFont(font)
+        self.button.clicked.connect(self.Buttun_Click)
+        #信號slot
+        self.setProcessbarValueSignal.connect(lambda value:self.processbar.setValue(value))
+        self.setLabelTextSignal.connect(lambda text:self.label.setText(text))
+        self.successsfullyStoppedSignal.connect(self.StopSuccess)
+        self.successsfullyComoletedSignal.connect(self.FinishSuccess)
+        self.setEnabledButtonSignal.connect(lambda:self.button.setEnabled(True))
+        self.hideSignal.connect(self.hide)
+        #變數
+        self._usercancel = False
+
+
+    def WasCancel(self):
+        #傳回使用者是否按下取消
+        with lock:
+            return self._usercancel
+    
+    
+    def Reset(self):
+        #重置
+        with lock:
+            self._usercancel = False
+        self.label.setText("")
+        self.processbar.setValue(0)
+        self.button.setText("取消")
+    
+    
+    def StopSuccess(self):
+        #程序成功中止
+        self.label.setText("成功中止")
+        self.button.setText("確認")
+        self.button.setEnabled(True)
+    
+    
+    def FinishSuccess(self):
+        #正常完成
+        if delete_model.isActivate:
+            delete_model.isActivate = False
+            self.button.setEnabled(True)
+            self.label.setText("刪除完成")
+        else:
+            self.label.setText("成功完成")
+        self.processbar.setValue(100)
+        self.button.setText("確認")
+
+
+    def Buttun_Click(self):
+        if self.button.text()!="確認":
+            self.label.setText("正在中止程序......")
+            with lock:
+                self._usercancel = True
+            self.button.setDisabled(True)
+        else:
+            self.close()
+   
+    
+    def closeEvent(self,event):
+        if not self.button.isEnabled():
+            event.ignore()
+        elif self.button.text()=="取消":
+            self.label.setText("正在中止程序......")
+            with lock:
+                self._usercancel = True
+            self.button.setDisabled(True)
+            event.ignore()
+        else:
+            event.accept()
+
+
+
+class LocalFilesProcessThread(QtCore.QThread):
+    def __init__(self):
+        super().__init__()
+    
+    
+    def format_check(self,file_name,file_path,csv):
+        #資料格式檢查
+        if progressDialog.WasCancel():
+            chose_file.clearFilesSignal.emit()
+            progressDialog.successsfullyStoppedSignal.emit()
+            return None,None
+        if chose_file.model == "pred":
+            if len(csv.shape) == 1:
+                csv = csv[numpy.newaxis,:]            
+            if numpy.isnan(csv[0,0]):
+                #有欄位名稱
+                csv_data = csv[1:,:]
+            else:
+                csv_data = csv
+            with open("Feature_number/"+default_model+"-number.pkl","rb") as f:
+                pred_feature_number = pickle.load(f)
+            if csv_data.shape[1] != pred_feature_number:
+                chose_file.clearFilesSignal.emit()
+                progressDialog.hideSignal.emit()
+                chose_file.showErrorDialogSignal.emit("","預測特徵數量")
+                return None,None
+            if numpy.any(numpy.isnan(csv_data)):
+                chose_file.clearFilesSignal.emit()
+                progressDialog.hideSignal.emit()
+                chose_file.showErrorDialogSignal.emit(file_name,"特徵")
+                return None,None      
+            return csv_data,None
+        else:            
+            if numpy.isnan(csv[0,0]):            
+                #有欄位名稱            
+                csv_data = csv[1:,:-1]
+                csv_class = numpy.genfromtxt(file_path,dtype="str",delimiter=',',usecols=(-1),skip_header=1,encoding="utf-8")
+            else:
+                csv_data = csv[:,:-1]
+                csv_class = numpy.genfromtxt(file_path,dtype="str",delimiter=',',usecols=(-1),encoding="utf-8")               
+            if numpy.any(numpy.isnan(csv_data)):
+                chose_file.clearFilesSignal.emit()
+                progressDialog.hideSignal.emit()
+                chose_file.showErrorDialogSignal.emit(file_name,"特徵")
+                return None,None
+            elif  not numpy.all(numpy.isnan(csv[:,-1])):
+                chose_file.clearFilesSignal.emit()
+                progressDialog.hideSignal.emit()
+                chose_file.showErrorDialogSignal.emit(file_name,"類別")
+                return None,None
+            return csv_data,csv_class
+
+    
+    def excel_to_csv(self,path):
+        #將excel轉換成csv
+        excel =  pandas.read_excel(path)
+        excel.to_csv("temp.csv",encoding="utf-8",index=False)
+        csv = numpy.genfromtxt("temp.csv",dtype="float32",delimiter=',',encoding="utf-8")       
+        return csv
+
+    
+    def merge_data_target(self,data_temp,class_temp,data,target,feature_numer):
+        #合併特徵&類別資料
+        if data.shape[1] != feature_numer:      
+            return None,None
+        if chose_file.model == "train":           
+            return numpy.vstack((data_temp,data)),numpy.hstack((class_temp,target))
+        else:
+            return numpy.vstack((data_temp,data)),None           
+
+        
+    def get_data_class_process(self,files):
+        progressDialog.setLabelTextSignal.emit("處理資料中......")
+        if len(files)==1:           
+            #只選擇一個檔案
+            _ = files[0].split("/")[-1].split(".")
+            file_name = _[0]
+            file_type = _[1]
+            progressDialog.setProcessbarValueSignal.emit(10)
+            if "csv" in file_type:
+                csv = numpy.genfromtxt(files[0],dtype="float32",delimiter=',',encoding="utf-8")
+                csv_data,csv_class = self.format_check(file_name,files[0],csv)
+                if csv_data is None:
+                    return None,None
+                progressDialog.setProcessbarValueSignal.emit(50)
+                return csv_data,csv_class
+            else:
+                csv = self.excel_to_csv(files[0])
+                csv_data,csv_class = self.format_check(file_name,"temp.csv",csv)
+                if csv_data is None:
+                    os.remove("temp.csv")
+                    return None,None
+                os.remove("temp.csv")
+                progressDialog.setProcessbarValueSignal.emit(50)
+                return csv_data,csv_class
+        else:
+            #選擇多個檔案
+            totalFileNumber = len(files)
+            currentFileNumber = 1
+            _ = files[0].split("/")[-1].split(".")
+            file_name = _[0]
+            file_type = _[1]
+            if "csv" in file_type:
+                csv = numpy.genfromtxt(files[0],dtype="float32",delimiter=',',encoding="utf-8")
+                csv_data_temp,csv_class_temp = self.format_check(file_name,files[0],csv)
+                if csv_data_temp is None:
+                    return None,None
+                feature_numer = csv_data_temp.shape[1]
+            else:
+                csv = self.excel_to_csv(files[0])
+                csv_data_temp,csv_class_temp = self.format_check(file_name,"temp.csv",csv)
+                if csv_data_temp is None:
+                    os.remove("temp.csv")
+                    return None,None
+                feature_numer = csv_data_temp.shape[1]
+                os.remove("temp.csv")
+            progressDialog.setProcessbarValueSignal.emit(int(currentFileNumber/totalFileNumber*50))
+            for file_path in files[1:]:
+                if progressDialog.WasCancel():
+                    chose_file.clearFilesSignal.emit()
+                    progressDialog.successsfullyStoppedSignal.emit()
+                    return None,None
+                _ = file_path.split("/")[-1].split(".")
+                file_name = _[0]
+                file_type = _[1]
+                if "csv" in file_type:
+                    csv = numpy.genfromtxt(file_path,dtype="float32",delimiter=',',encoding="utf-8")                    
+                    csv_data,csv_class = self.format_check(file_name,file_path,csv)
+                    if csv_data is None:
+                        return None,None
+                    csv_data_temp,csv_class_temp = self.merge_data_target(csv_data_temp,csv_class_temp,csv_data,csv_class,feature_numer)
+                    if csv_data_temp is None:
+                        chose_file.clearFilesSignal.emit()
+                        progressDialog.hideSignal.emit()
+                        chose_file.showErrorDialogSignal.emit("","合併")
+                        return None,None
+                elif "xlsx" in file_type or "xls" in file_type:
+                    csv = self.excel_to_csv(file_path)
+                    csv_data,csv_class = self.format_check(file_name,"temp.csv",csv)
+                    if csv_data is None:
+                        os.remove("temp.csv")
+                        return None,None
+                    os.remove("temp.csv")
+                    csv_data_temp,csv_class_temp = self.merge_data_target(csv_data_temp,csv_class_temp,csv_data,csv_class,feature_numer)
+                    if csv_data_temp is None:
+                        chose_file.clearFilesSignal.emit()
+                        progressDialog.hideSignal.emit()
+                        chose_file.showErrorDialogSignal.emit("","合併")
+                        return None,None
+                currentFileNumber+=1
+                progressDialog.setProcessbarValueSignal.emit(int(currentFileNumber/totalFileNumber*50))
+            chose_file.clearFilesSignal.emit()
+            return csv_data_temp,csv_class_temp
+    
+    
+    def run(self):
+        csv_data,csv_class = self.get_data_class_process(chose_file.files)
+        if csv_data is None:
+            return                                   
+        elif chose_file.model == "train":
+            progressDialog.setLabelTextSignal.emit("訓練模型中......")          
+            encoder,train_class = Ui_chose_file.class_coding(csv_class)
+            model,scaler,feature_number = Ui_chose_file.train_model(csv_data,train_class)
+            progressDialog.setProcessbarValueSignal.emit(75)
+            if model is None:
+                return
+            Ui_chose_file.model_scaler_encoder_number_save(model,scaler,encoder,feature_number)        
+        else:
+            progressDialog.setLabelTextSignal.emit("模型預測中......")
+            progressDialog.setProcessbarValueSignal.emit(75)
+            with open("./Model/"+default_model+"-model.pkl","rb") as f:
+                pred_model = pickle.load(f)
+            with open("./Scaler/"+default_model+"-scaler.pkl","rb") as f:
+                pred_model_scaler = pickle.load(f)
+            with open("./Encoder/"+default_model+"-encoder.pkl","rb") as f:
+                pred_model_encoder = pickle.load(f)
+            pred_data = pred_model_scaler.transform(csv_data)
+            result = pred_model.predict(pred_data)
+            if len(result)==1:
+                #只有一筆預測資料
+                result = pred_model_encoder.inverse_transform(result)
+                mainwindows.pred_show_content.setText(str(result[0]))
+            else:
+                result = pred_model_encoder.inverse_transform(result)
+                result = result[:,numpy.newaxis]
+                if "USERPROFILE" in os.environ:
+                    numpy.savetxt(os.environ["USERPROFILE"]+"\\Desktop\\result.txt",result,"%s")
+                    mainwindows.pred_show_content.setText("已將結果儲存在桌面的result.txt檔案")
+                else:
+                    numpy.savetxt(os.environ["SYSTEMDRIVE"]+"\\result.txt",result,"%s")
+                    mainwindows.pred_show_content.setText(f"已將結果儲存在{os.environ['SYSTEMDRIVE']}中的result.txt檔案")
+        progressDialog.successsfullyComoletedSignal.emit()
+
+
+class DeleteAllModelProcessThread(QtCore.QThread):
+    def __init__(self):
+        super().__init__()
+    
+    
+    def run(self):
+        shutil.rmtree("Model")
+        os.mkdir("Model")
+        progressDialog.setProcessbarValueSignal.emit(20)
+        shutil.rmtree("Scaler")
+        os.mkdir("Scaler")
+        progressDialog.setProcessbarValueSignal.emit(40)
+        shutil.rmtree("Encoder")
+        os.mkdir("Encoder")
+        progressDialog.setProcessbarValueSignal.emit(60)
+        shutil.rmtree("Feature_number")
+        os.mkdir("Feature_number")
+        progressDialog.setProcessbarValueSignal.emit(80)
+        mainwindows.setCurrentModelSignal.emit("未訓練模型")
+        with open("latest-date.pkl","wb") as f:
+            pickle.dump("",f)
+        progressDialog.successsfullyComoletedSignal.emit()
+
+
+
 
 def find_second_latest_model(year_list,latest_year="yes"):
     global model_year
@@ -746,20 +856,14 @@ def find_second_latest_model(year_list,latest_year="yes"):
 with open("latest-date.pkl","rb") as f:
     default_model = pickle.load(f)
 
-processstytle = """
-QLabel{font-size:20px;}
-QProgressBar{width:100px;
-height:20px;
-text-align:center;
-font-size:15px;
-border:1px solid gray;
-border-radius:5px;}
-QProgressBar::chunk{background:#66c2ff;}
-QPushButton{width:70px; height:25px; font-size:15px;}"""
 
 
+lock = threading.Lock()
+localFilesProcessThread = LocalFilesProcessThread()
+deleteAllModelProcessThread = DeleteAllModelProcessThread()
 app = QtWidgets.QApplication([])
 mainwindows = Ui_mainwindows()
+progressDialog = ProgressDialog(mainwindows)
 chose_file = Ui_chose_file(mainwindows)
 chose_model_year = Ui_chose_model_year(mainwindows)
 chose_model_final = Ui_chose_model_final(mainwindows)
