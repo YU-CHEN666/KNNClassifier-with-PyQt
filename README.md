@@ -11,6 +11,7 @@
 - [預測結果](#預測結果)
 - [關於模型準確率](#關於模型準確率)
 - [馬上使用](#馬上使用)
+- [實際運作影片](#實際運作影片)
 
 # 簡介
 不懂AI沒關係，我設計了一個圖形使用者介面，操作非常的簡單，沒有過多花俏的功能簡潔有力，讓任何人都可以輕鬆使用及體驗AI的強大。
@@ -47,6 +48,6 @@
 1. 請先下載:[點此下載](https://drive.google.com/file/d/1eWN8iEtSMkCZ5ROx2TGWIGXn0rL7_yPE/view?usp=sharing)
 2. 解壓縮。
 3. 打開資料夾，點擊執行程式，開始體驗AI的強大!
-
-
+# 實際運作影片
+網址:[https://youtu.be/eEIDeHkPPV4?si=auX3_EaX3zfD6jPk](https://youtu.be/eEIDeHkPPV4?si=auX3_EaX3zfD6jPk)
 
