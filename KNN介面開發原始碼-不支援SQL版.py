@@ -177,7 +177,7 @@ class Ui_chose_file(QtWidgets.QWidget):
             self.files = files
             progressDialog.Reset()
             progressDialog.show()
-            localFilesProcessThread.start()
+            localFilesProcessThread.Start()
         else:
             return
   
@@ -386,7 +386,7 @@ class Ui_delete_model(QtWidgets.QWidget):
             progressDialog.button.setDisabled(True)
             progressDialog.show()
             self.isActivate = True
-            deleteAllModelProcessThread.start()
+            deleteAllModelProcessThread.Start()
         else:
             return
 
@@ -623,9 +623,14 @@ class ProgressDialog(QtWidgets.QWidget):
 
 
 
-class LocalFilesProcessThread(QtCore.QThread):
+class LocalFilesProcessThread():
     def __init__(self):
-        super().__init__()
+        pass
+    
+    
+    def Start(self):
+        thread = threading.Thread(target=self.Work, daemon=True)
+        thread.start()
     
     
     def format_check(self,file_name,file_path,csv):
@@ -778,7 +783,7 @@ class LocalFilesProcessThread(QtCore.QThread):
             return csv_data_temp,csv_class_temp
     
     
-    def run(self):
+    def Work(self):
         csv_data,csv_class = self.get_data_class_process(chose_file.files)
         if csv_data is None:
             return                                   
@@ -817,12 +822,17 @@ class LocalFilesProcessThread(QtCore.QThread):
         progressDialog.successsfullyComoletedSignal.emit()
 
 
-class DeleteAllModelProcessThread(QtCore.QThread):
+class DeleteAllModelProcessThread():
     def __init__(self):
-        super().__init__()
+        pass
     
     
-    def run(self):
+    def Start(self):
+        thread = threading.Thread(target=self.Work, daemon=True)
+        thread.start()
+        
+        
+    def Work(self):
         shutil.rmtree("Model")
         os.mkdir("Model")
         progressDialog.setProcessbarValueSignal.emit(20)
