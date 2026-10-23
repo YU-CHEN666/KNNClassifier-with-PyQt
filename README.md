@@ -58,7 +58,7 @@
 ```cmd
 pip install -r C:\Users\123\Desktop\requirements.txt
 ```
-請將requirements.txt路徑，改為你電腦上的絕對路徑
+請先下載requirements.txt，再把路徑改為你電腦上的絕對路徑
 # 馬上使用
 1. 請先下載:[點此下載](https://drive.google.com/file/d/1eWN8iEtSMkCZ5ROx2TGWIGXn0rL7_yPE/view?usp=sharing)
 2. 解壓縮。
