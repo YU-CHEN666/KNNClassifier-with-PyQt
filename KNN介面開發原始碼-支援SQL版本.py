@@ -206,7 +206,7 @@ class Ui_chose_file(QtWidgets.QWidget):
             self.files = files
             progressDialog.Reset()
             progressDialog.show()
-            localFilesProcessThread.start()
+            localFilesProcessThread.Start()
         else:
             return
             
@@ -475,7 +475,7 @@ class Ui_sql_chose(QtWidgets.QWidget):
         progressDialog.Reset()
         progressDialog.label.setText("處理資料中......")
         progressDialog.show()
-        sqlDataProcessThread.start()
+        sqlDataProcessThread.Start()
 
         
        
@@ -654,7 +654,7 @@ class Ui_delete_model(QtWidgets.QWidget):
             progressDialog.button.setDisabled(True)
             progressDialog.show()
             self.isActivate = True
-            deleteAllModelProcessThread.start()
+            deleteAllModelProcessThread.Start()
         else:
             return
 
@@ -891,10 +891,15 @@ class ProgressDialog(QtWidgets.QWidget):
   
         
   
-class LocalFilesProcessThread(QtCore.QThread):
+class LocalFilesProcessThread():
     def __init__(self):
-        super().__init__()
+        pass
     
+    
+    def Start(self):
+        thread = threading.Thread(target=self.Work, daemon=True)
+        thread.start()
+        
     
     def format_check(self,file_name,file_path,csv):
         #資料格式檢查
@@ -1046,7 +1051,7 @@ class LocalFilesProcessThread(QtCore.QThread):
             return csv_data_temp,csv_class_temp
     
     
-    def run(self):
+    def Work(self):
         csv_data,csv_class = self.get_data_class_process(chose_file.files)
         if csv_data is None:
             return                                   
@@ -1086,10 +1091,15 @@ class LocalFilesProcessThread(QtCore.QThread):
     
     
 
-class SqlDataProcessThread(QtCore.QThread):
+class SqlDataProcessThread():
     def __init__(self):
-        super().__init__()
+        pass
     
+    
+    def Start(self):
+        thread = threading.Thread(target=self.Work,daemon=True)
+        thread.start()
+        
     
     def format_error_dialog(self,table_name,where):
         progressDialog.hideSignal.emit()
@@ -1132,7 +1142,7 @@ class SqlDataProcessThread(QtCore.QThread):
             return data,None
         
     
-    def run(self):
+    def Work(self):
         initial_data = numpy.array(sql_chose.data_from_table,dtype="str")
         initial_data_shape = initial_data.shape
         data = pandas.to_numeric(initial_data.reshape(-1),errors='coerce',downcast="float")
@@ -1187,12 +1197,17 @@ class SqlDataProcessThread(QtCore.QThread):
         
 
 
-class DeleteAllModelProcessThread(QtCore.QThread):
+class DeleteAllModelProcessThread():
     def __init__(self):
-        super().__init__()
+        pass
     
     
-    def run(self):
+    def Start(self):
+        thread = threading.Thread(target=self.Work,daemon=True)
+        thread.start()
+        
+    
+    def Work(self):
         shutil.rmtree("Model")
         os.mkdir("Model")
         progressDialog.setProcessbarValueSignal.emit(20)
