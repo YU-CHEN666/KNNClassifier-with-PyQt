@@ -53,6 +53,7 @@
 |pandas|2.3.1|
 |scikit-learn |1.7.1|
 |PyQt6|6.9.1|
+|openpyxl|3.1.5|
 
 可使用下列指令一次性安裝所有模組:
 ```cmd
