@@ -47,7 +47,12 @@ class Ui_chose_file(QtWidgets.QWidget):
         self.horizontalLayout.addWidget(self.button_cancel)
         #信號連接slot
         self.clearFilesSignal.connect(self.ClearFiles)
-        self.showErrorDialogSignal.connect(lambda arg1,arg2:self.format_error_dialog(arg1,arg2))
+        self.showErrorDialogSignal.connect(self.format_error_dialog_receive)
+    
+    
+    @QtCore.pyqtSlot(str,str)
+    def format_error_dialog_receive(self,file_name,where): 
+        self.format_error_dialog(file_name,where)
 
 
     def format_error_dialog(self,file_name,where):
@@ -484,8 +489,13 @@ class Ui_mainwindows(QtWidgets.QWidget):
         self.pred_show_content.setStyleSheet("background:white")
         self.content_Layout.addWidget(self.pred_show_content)
         #信號連接slot
-        self.setCurrentModelSignal.connect(lambda text:self.model_show_content.setText(text))
+        self.setCurrentModelSignal.connect(self.model_show_content_setText)
     
+    
+    @QtCore.pyqtSlot(str)
+    def model_show_content_setText(self,text):
+        self.model_show_content.setText(text)
+        
     
     def check_exist_model(self,who):
         global default_model
@@ -555,16 +565,31 @@ class ProgressDialog(QtWidgets.QWidget):
         self.button.setFont(font)
         self.button.clicked.connect(self.Buttun_Click)
         #信號slot
-        self.setProcessbarValueSignal.connect(lambda value:self.processbar.setValue(value))
-        self.setLabelTextSignal.connect(lambda text:self.label.setText(text))
+        self.setProcessbarValueSignal.connect(self.processbar_setValue)
+        self.setLabelTextSignal.connect(self.label_setText)
         self.successsfullyStoppedSignal.connect(self.StopSuccess)
         self.successsfullyComoletedSignal.connect(self.FinishSuccess)
-        self.setEnabledButtonSignal.connect(lambda:self.button.setEnabled(True))
+        self.setEnabledButtonSignal.connect(self.button_setEnabled)
         self.hideSignal.connect(self.hide)
         #變數
         self._usercancel = False
 
 
+    @QtCore.pyqtSlot(int)
+    def processbar_setValue(self,value):
+        self.processbar.setValue(value)
+        
+        
+    @QtCore.pyqtSlot(str)
+    def label_setText(self,text):
+        self.label.setText(text)
+        
+        
+    @QtCore.pyqtSlot()
+    def button_setEnabled(self):
+        self.button.setEnabled(True)
+        
+        
     def WasCancel(self):
         #傳回使用者是否按下取消
         with lock:
